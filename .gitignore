@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pkl
+*.egg-info/
+.env
+.venv/
+venv/
+.Python
+
+# FastAPI / Uvicorn
+*.log
+
+# Node / Next.js
+node_modules/
+.next/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# CadQuery / STL outputs
+*.stl
+*.step
+*.iges
+*.3mf
+cad/__pycache__/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker
+*.pid
+*.seed
+docker-data/
