@@ -1,0 +1,43 @@
+# Node / Next.js
+node_modules
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+pnpm-debug.log
+.next
+dist
+
+# Python / FastAPI
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+*.egg-info
+.env
+.venv
+venv
+*.log
+
+# CAD / STL files
+*.stl
+*.step
+*.iges
+*.3mf
+
+# Git / VCS
+.git
+.gitignore
+.gitattributes
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+*.swp
+*.swo
+
+# Docker / Compose local files
+docker-compose*.yml
+docker-data
