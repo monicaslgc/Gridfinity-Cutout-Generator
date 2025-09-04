@@ -32,7 +32,8 @@ class DimensionsResponse(BaseModel):
     confidence: float
 
 
-Options = BaseModel.model_construct  # placeholder to avoid Literal forward issues
+# Placeholder to avoid Literal forward issues in some tooling
+Options = BaseModel.model_construct  # type: ignore[assignment]
 
 
 class Proposal(BaseModel):
@@ -65,6 +66,7 @@ class STLRequest(BaseModel):
 class STLFile(BaseModel):
     type: str
     url: str
+    preview_url: Optional[str] = None  # Optional preview PNG URL
 
 
 class STLFilesResponse(BaseModel):
