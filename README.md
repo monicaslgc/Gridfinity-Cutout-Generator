@@ -12,8 +12,8 @@ Users can describe an object (or upload a photo), and the system:
 4. Outputs STL files ready for 3D printing.
 
 
-![backend](https://github.com/<OWNER>/<REPO>/actions/workflows/backend.yml/badge.svg)
-![frontend](https://github.com/<OWNER>/<REPO>/actions/workflows/frontend.yml/badge.svg)
+![backend](https://github.commonicaslgc/Gridfinity-Cutout-Generator/actions/workflows/backend.yml/badge.svg)
+![frontend](https://github.commonicaslgc/Gridfinity-Cutout-Generator/actions/workflows/frontend.yml/badge.svg)
 
 ---
 
