@@ -1,0 +1,5 @@
+httpx>=0.27
+extruct>=0.16.0 # optional but recommended for schema.org parsing
+rdflib>=7.0.0 # extruct RDFa backend
+lxml>=5.2.2 # HTML parsing speed-up for extruct
+fastapi>=0.111
