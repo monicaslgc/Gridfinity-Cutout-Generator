@@ -11,10 +11,6 @@ Users can describe an object (or upload a photo), and the system:
    - **Multi-purpose** – divided compartments for the item and accessories  
 4. Outputs STL files ready for 3D printing.
 
-
-![backend](https://github.commonicaslgc/Gridfinity-Cutout-Generator/actions/workflows/backend.yml/badge.svg)
-![frontend](https://github.commonicaslgc/Gridfinity-Cutout-Generator/actions/workflows/frontend.yml/badge.svg)
-
 ---
 
 ## Key Features
