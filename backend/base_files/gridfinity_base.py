@@ -37,8 +37,8 @@ def gridfinity_base(
     if add_magnet_holes:
         for i in [0, x_cells-1]:
             for j in [0, y_cells-1]:
-                cx = -length / 2 + MAGNET_OFFSET + i * (length - 2 * MAGNET_OFFSET)
-                cy = -width / 2 + MAGNET_OFFSET + j * (width - 2 * MAGNET_OFFSET)
+                cx = -length / 2 + magnet_offset + i * (length - 2 * magnet_offset)
+                cy = -width / 2 + magnet_offset + j * (width - 2 * magnet_offset)
                 base = base.faces("<Z").workplane(centerOption="CenterOfBoundBox").center(cx, cy).hole(magnet_diameter, magnet_depth)
     return base
 
