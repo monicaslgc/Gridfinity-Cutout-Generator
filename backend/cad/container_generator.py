@@ -22,7 +22,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Iterable, List, Literal, Optional, Tuple
-import math
 import sys
 import pathlib
 from pathlib import Path
@@ -328,8 +327,7 @@ class GridfinityContainerGenerator:
         usable_h = h - (cfg.lip_height if cfg.lip else 0.0)
         # Circles
         if cfg.circles:
-            pts = [(x, y) for (x, y, _d) in cfg.circles]
-            # Using max diameter across all just to reuse a single object: build per-circle for individual diameters.
+            # Build per-circle to honor individual diameters.
             for (x, y, d) in cfg.circles:
                 wp = wp.cut(
                     cq.Workplane("XY")
@@ -362,8 +360,7 @@ def render_stl_preview_png(stl_path: str | Path, out_png: str | Path, *, elev: i
       - Not photo-realistic, but fast and headless-friendly for thumbnails.
     """
     try:
-        from stl import mesh  # numpy-stl
-        import numpy as np
+        from stl import mesh  # pyright: ignore[reportMissingImports]  # numpy-stl
         import matplotlib
         matplotlib.use("Agg")  # headless
         import matplotlib.pyplot as plt
@@ -437,7 +434,7 @@ def _parse_cutout_rect(text: str) -> Tuple[float, float, float, float, float]:
         raise argparse.ArgumentTypeError("Rect cutout: x,y,w,h,r") from e
 
 
-def build_from_args(argv: Optional[Iterable[str]] = None) -> Tuple[GridfinityContainerGenerator, ContainerConfig]:
+def build_from_args(argv: Optional[Iterable[str]] = None) -> Tuple[GridfinityContainerGenerator, ContainerConfig, argparse.Namespace]:
     p = argparse.ArgumentParser(description="Gridfinity container generator (CadQuery)")
     p.add_argument("--x", dest="x", type=int, default=2)
     p.add_argument("--y", dest="y", type=int, default=2)
@@ -515,48 +512,25 @@ def build_from_args(argv: Optional[Iterable[str]] = None) -> Tuple[GridfinityCon
     )
 
     gen = GridfinityContainerGenerator(cfg)
-    return gen, cfg
+    return gen, cfg, args
 
 
 def main(argv: Optional[Iterable[str]] = None) -> int:
-    gen, cfg = build_from_args(argv)
-    if cfg is None:
-        print("Invalid configuration", file=sys.stderr)
-        return 2
-    if "--demo" in (argv or sys.argv[1:]):
+    gen, cfg, args = build_from_args(argv)
+    if args.demo:
         # Simple demo: 2x2, finger cutouts on +x and -x
         demo_out = pathlib.Path("demo.stl")
         gen.cfg.finger_cutouts = gen.cfg.finger_cutouts or [("+x", 24, 10, 12), ("-x", 24, 10, 12)]
         gen.export_stl(demo_out)
         print(f"Exported {demo_out.resolve()}")
         return 0
-    if gen.cfg and gen.cfg.__dict__.get("export"):
-        # Not used since cfg doesn't store export path; handled via args below
-        pass
-    # Export if requested
-    idx = None
-    if argv is not None:
-        try:
-            idx = list(argv).index("--export")
-        except ValueError:
-            idx = None
-    else:
-        try:
-            idx = sys.argv.index("--export")
-        except ValueError:
-            idx = None
-    path = None
-    if idx is not None:
-        try:
-            path = (list(argv)[idx + 1] if argv is not None else sys.argv[idx + 1])
-        except Exception:
-            path = None
-    if path:
-        if getattr(args, "preview", None):
-            stl_out, png_out = gen.export_with_preview(path, args.preview)
+
+    if args.export:
+        if args.preview:
+            stl_out, png_out = gen.export_with_preview(args.export, args.preview)
             print(f"Exported {stl_out.resolve()} and preview {png_out.resolve()}")
         else:
-            out = gen.export_stl(path)
+            out = gen.export_stl(args.export)
             print(f"Exported {out.resolve()}")
     else:
         _ = gen.build()
