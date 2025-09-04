@@ -13,23 +13,35 @@ on:
 
 jobs:
   build:
-    # Skip if the frontend app isn't present on this ref
-    if: ${{ hashFiles('frontend/package.json') != '' }}
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check if frontend exists
+        id: check
+        run: |
+          if [ -f frontend/package.json ]; then
+            echo "present=true" >> $GITHUB_OUTPUT
+          else
+            echo "present=false" >> $GITHUB_OUTPUT
+          fi
+
       - uses: actions/setup-node@v4
+        if: steps.check.outputs.present == 'true'
         with:
           node-version: '18'
+
       - name: Install deps
+        if: steps.check.outputs.present == 'true'
+        working-directory: frontend
         run: |
           if [ -f package-lock.json ]; then
             npm ci --no-audit --no-fund
           else
             npm install --no-audit --no-fund
           fi
+
       - name: Build
+        if: steps.check.outputs.present == 'true'
+        working-directory: frontend
         run: npm run build
