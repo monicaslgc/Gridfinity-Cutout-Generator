@@ -1,0 +1,12 @@
+# Backend-specific temp files
+temp_files/
+
+# Python cache (optional if not in root already)
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environments (optional if not in root)
+env/
+venv/
+.venv/
