@@ -4,3 +4,7 @@ cadquery
 
 numpy-stl
 matplotlib
+
+python-multipart
+numpy-stl
+matplotlib
