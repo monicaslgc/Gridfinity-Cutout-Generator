@@ -1,5 +1,6 @@
-fastapi
-uvicorn[standard]
-pydantic
-cadquery
-requests
+fastapi==0.115.0
+uvicorn[standard]==0.30.5
+pydantic==2.9.2
+cadquery==2.4.0
+numpy>=1.26
+requests==2.32.3
