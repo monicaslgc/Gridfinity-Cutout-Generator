@@ -25,8 +25,7 @@ COPY backend/ .
 EXPOSE 8000
 
 # Run FastAPI with Uvicorn.
-# NOTE: this runs the flat main.py, not app/main.py. app/ is a more
-# ambitious backend that predates this file but currently fails to import
-# (see backend/tests/test_app_package_status.py). Point this at
-# "app.main:app" again once that's fixed.
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# This runs app/main.py - the real backend that resolves dimensions from
+# Wikidata, manufacturer schema.org markup, and Wikipedia. It was broken
+# (unimportable) for a while; that's fixed now, so this points here again.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
