@@ -29,11 +29,9 @@ class DimensionsResponse(BaseModel):
     name: str
     dims_mm: Dimensions
     source: str
+    source_url: Optional[str] = None
     confidence: float
-
-
-# Placeholder to avoid Literal forward issues in some tooling
-Options = BaseModel.model_construct  # type: ignore[assignment]
+    evidence: List[str] = Field(default_factory=list)
 
 
 class Proposal(BaseModel):

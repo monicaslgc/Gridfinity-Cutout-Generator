@@ -19,7 +19,7 @@ from .services.identification import identify_from_text, identify_from_image
 from .services.proposals import generate_proposals
 from .services.stl import generate_stl_files
 
-# NEW aggregator that pulls dimensions from Wikidata, manufacturer schema.org, and Wikipedia
+# Aggregator that pulls dimensions from Wikidata, manufacturer schema.org, and Wikipedia
 from .services.dimensions.fetcher import fetch_dimensions
 
 DATA_DIR = Path("data")
@@ -76,7 +76,10 @@ async def dimensions(
         extra_urls = [u.strip() for u in urls.split(",") if u.strip()]
 
     result, resolved_qid = await fetch_dimensions(qid=id, query=q, extra_urls=extra_urls)
-    if not result:
+    # NOTE(why): require all three axes, not just a truthy result - a
+    # partial match (e.g. only L and W found) would otherwise fail pydantic
+    # validation below with an unhandled 500 instead of a clean 404.
+    if not result or not result.is_complete():
         raise HTTPException(status_code=404, detail="Dimensions not found")
 
     return DimensionsResponse(
