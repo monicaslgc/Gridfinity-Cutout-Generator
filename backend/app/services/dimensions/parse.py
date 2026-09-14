@@ -1,60 +1,61 @@
 from __future__ import annotations
+import re
+from typing import Dict, Optional, Tuple
+
 from .units import to_mm
 
-
-_DIM_RE = re.compile(
-r"(?P<a>\d{1,4}(?:[\.,]\d{1,3})?)\s*[×xX*]\s*(?P<b>\d{1,4}(?:[\.,]\d{1,3})?)\s*[×xX*]\s*(?P<c>\d{1,4}(?:[\.,]\d{1,3})?)\s*(?P<unit>mm|millimetre|millimeter|cm|centimetre|centimeter|m|metre|meter|in|inch|inches|″|"|ft|foot|feet|′)?",
-re.IGNORECASE,
-)
-_NUM_UNIT_RE = re.compile(
-r"(?P<val>\d{1,4}(?:[\.,]\d{1,3})?)\s*(?P<unit>mm|millimetre|millimeter|cm|centimetre|centimeter|m|metre|meter|in|inch|inches|″|"|ft|foot|feet|′)",
-re.IGNORECASE,
+_UNIT_ALT = (
+    r"mm|millimetre|millimeter|cm|centimetre|centimeter|m|metre|meter"
+    r"|in|inch|inches|ft|foot|feet|″|′"
 )
 
+_TRIPLET_RE = re.compile(
+    r"(?P<a>\d{1,4}(?:[.,]\d{1,3})?)\s*[x×*]\s*"
+    r"(?P<b>\d{1,4}(?:[.,]\d{1,3})?)\s*[x×*]\s*"
+    r"(?P<c>\d{1,4}(?:[.,]\d{1,3})?)\s*"
+    r"(?P<unit>" + _UNIT_ALT + r")?",
+    re.IGNORECASE,
+)
+
+_SINGLE_RE = re.compile(
+    r"(?P<val>\d{1,4}(?:[.,]\d{1,3})?)\s*(?P<unit>" + _UNIT_ALT + r")",
+    re.IGNORECASE,
+)
 
 
-
-def _to_float(s: str) -> float:
-return float(s.replace(",", "."))
-
-
+def _to_float(raw: str) -> float:
+    return float(raw.replace(",", "."))
 
 
 def parse_triplet(text: str) -> Optional[Tuple[float, float, float, Optional[str]]]:
-m = _DIM_RE.search(text)
-if not m:
-return None
-a = _to_float(m.group("a"))
-b = _to_float(m.group("b"))
-c = _to_float(m.group("c"))
-unit = m.group("unit")
-return a, b, c, unit
-
-
+    """Match a "152 x 106 x 60 mm" style triplet anywhere in `text`."""
+    match = _TRIPLET_RE.search(text)
+    if not match:
+        return None
+    a = _to_float(match.group("a"))
+    b = _to_float(match.group("b"))
+    c = _to_float(match.group("c"))
+    return a, b, c, match.group("unit")
 
 
 def parse_single(text: str) -> Optional[Tuple[float, Optional[str]]]:
-m = _NUM_UNIT_RE.search(text)
-if not m:
-return None
-return _to_float(m.group("val")), m.group("unit")
-
-
+    """Match a single "45 cm" style measurement anywhere in `text`."""
+    match = _SINGLE_RE.search(text)
+    if not match:
+        return None
+    return _to_float(match.group("val")), match.group("unit")
 
 
 def normalize_dims_from_text(text: str) -> Optional[Dict[str, float]]:
-"""Try to parse common dimension strings like "152 × 106 × 60 mm".
-Why: many sites serialize dimensions as free text.
-"""
-triple = parse_triplet(text)
-if triple:
-a, b, c, unit = triple
-factor = to_mm(1.0, unit) or 1.0
-return {"L": a * factor, "W": b * factor, "H": c * factor}
-one = parse_single(text)
-if one: # Could be diameter, thickness, etc. Caller must map.
-val, unit = one
-factor = to_mm(1.0, unit) or 1.0
-return {"L": val * factor}
-return None
+    """Best-effort parse of a free-text dimensions string like
+    "152 x 106 x 60 mm" into {"L", "W", "H"} millimetre values.
 
+    Why: many sites and articles describe dimensions as plain text rather
+    than structured data, so this is the fallback of last resort.
+    """
+    triple = parse_triplet(text)
+    if not triple:
+        return None
+    a, b, c, unit = triple
+    factor = to_mm(1.0, (unit or "mm").lower()) or 1.0
+    return {"L": a * factor, "W": b * factor, "H": c * factor}
