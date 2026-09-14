@@ -1,44 +1,44 @@
 # Gridfinity Cutout Generator (LLM + CAD)
 
-This project is an automatic generator of Gridfinity containers with custom cutouts for specific items.  
+This project is an automatic generator of Gridfinity containers with custom cutouts for specific items.
 Users can describe an object (or upload a photo), and the system:
 
-1. Identifies the item via an LLM (multimodal text + image).  
-2. Fetches exact dimensions from online sources (manufacturer, Wikidata, marketplaces).  
-3. Generates three container proposals:  
-   - **Snug Fit** – tight fit, minimal clearance  
-   - **Easy Grab** – looser fit with finger cutouts for quick access  
-   - **Multi-purpose** – divided compartments for the item and accessories  
+1. Identifies the item via an LLM (multimodal text + image).
+2. Fetches exact dimensions from online sources (manufacturer, Wikidata, marketplaces).
+3. Generates three container proposals:
+   - **Snug Fit** – tight fit, minimal clearance
+   - **Easy Grab** – looser fit with finger cutouts for quick access
+   - **Multi-purpose** – divided compartments for the item and accessories
 4. Outputs STL files ready for 3D printing.
 
 ---
 
 ## Key Features
-- Fully Gridfinity compatible (X/Y multiples of 42 mm, Z multiples of 7 mm)  
-- Optional stacking lip, magnet holes (Ø6 × 2 mm), and screw holes (M3)  
-- Automatic cutout generation with FDM-appropriate tolerances  
-- Web interface for input (text/image) and STL preview  
+- Fully Gridfinity compatible (X/Y multiples of 42 mm, Z multiples of 7 mm)
+- Optional stacking lip, magnet holes (Ø6 × 2 mm), and screw holes (M3)
+- Automatic cutout generation with FDM-appropriate tolerances
+- Web interface for input (text/image) and STL preview
 - Backend powered by FastAPI, CadQuery, and an LLM toolchain
 
 ---
 
 ## Architecture
-| Component      | Description |
+| Component | Description |
 |----------------|-------------|
-| Frontend       | Next.js + React + Tailwind CSS + three.js STL viewer |
-| Backend        | FastAPI (Python) |
-| LLM Tools      | Entity linking, web dimension lookup, image-based scale estimation |
-| CAD Engine     | CadQuery (or build123d) with Gridfinity parametric models |
-| Storage        | S3-compatible bucket for STL files and thumbnails |
-| Deployment     | Docker Compose (frontend + backend) + CDN for FAST static delivery |
+| Frontend | Next.js + React + Tailwind CSS + three.js STL viewer |
+| Backend | FastAPI (Python) |
+| LLM Tools | Entity linking, web dimension lookup, image-based scale estimation |
+| CAD Engine | CadQuery (or build123d) with Gridfinity parametric models |
+| Storage | S3-compatible bucket for STL files and thumbnails |
+| Deployment | Docker Compose (frontend + backend) + CDN for FAST static delivery |
 
 ---
 
 ## Getting Started
 
 ### Prerequisites
-- Docker & Docker Compose  
-- Python 3.10+ (for backend development without Docker)  
+- Docker & Docker Compose
+- Python 3.10+ (for backend development without Docker)
 - Node.js 18+ (for frontend development)
 
 ### Running with Docker
@@ -48,7 +48,7 @@ cd Gridfinity-Cutout-Generator
 docker compose up --build
 ```
 
-- Backend: `http://localhost:8000`  
+- Backend: `http://localhost:8000`
 - Frontend: `http://localhost:3000`
 
 ### Local Development
@@ -56,7 +56,7 @@ docker compose up --build
 ```bash
 cd backend
 pip install -r requirements.txt
-uvicorn main:app --reload
+uvicorn app.main:app --reload
 ```
 
 **Frontend only**
@@ -71,7 +71,7 @@ npm run dev
 ## API Reference
 
 The backend includes automatic API documentation via Swagger UI and ReDoc:
-- Swagger UI: `http://localhost:8000/docs`  
+- Swagger UI: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
 
 ### POST /identify
@@ -83,7 +83,7 @@ Identifies an item from a text string or image upload.
 ```
 
 **Request (image)**
-Includes a file in `multipart/form-data`:  
+Includes a file in `multipart/form-data`:
 `file=@photo.jpg`
 
 **Response**
@@ -195,28 +195,32 @@ Generates STL files corresponding to a selected container proposal.
 
 ## Project Structure
 ```
-/frontend      → Next.js app (UI + STL preview)
-/backend       → FastAPI app (LLM + CAD + API)
-/cad           → CadQuery scripts for Gridfinity bins
-/docs          → Documentation and diagrams
+/frontend → Next.js app (UI + STL preview)
+/backend → FastAPI app (LLM + CAD + API)
+/cad → CadQuery scripts for Gridfinity bins
+/docs → Documentation and diagrams
 ```
 
 ---
 
 ## Development Roadmap
 
-Current status: /identify and /dimensions are live against a small local mock catalog (keyword matching, not a real LLM or web lookup yet). /proposals and /stl are real: real Gridfinity slot math and a real CadQuery-generated STL. The flow works end to end locally with mock data - swapping the catalog for a real LLM + dimension lookup is the next step.
-- [x] MVP: Text-based item lookup and STL generation  
-- [ ] Image-based item recognition with scale reference  
-- [ ] User customization (wall thickness, lip, labels, etc.)  
-- [ ] Design gallery and shareable links  
+Current status: there are two backends in `backend/`. `backend/main.py` is a small mock-catalog version (`/identify` and `/dimensions` do keyword matching against a local list, not a real LLM or web lookup) that the frontend and Docker Compose used while `backend/app/` was broken. `backend/app/` is the real backend: `/identify` resolves items to Wikidata QIDs, `/dimensions` pulls real measurements from Wikidata, manufacturer schema.org product markup, and Wikipedia text (merging whichever sources have data, in that priority order), and `/proposals` / `/stl` generate real Gridfinity slot math and real CadQuery STL files, including the stacking lip, magnet holes, and screw holes. `backend/app/` was unimportable for a while (a corrupted `dimensions/` subpackage plus a naming collision with a leftover flat file); that's been rewritten and is now covered by its own test suite, and Docker Compose and the Dockerfile both point at it again (`app.main:app`).
+
+Known caveats: `/identify-image` is still a placeholder (it doesn't actually analyze the photo yet - image-based recognition is the roadmap item below). Wikidata dimensions are stored as plain numbers without units, so converting them to mm uses a size heuristic rather than a guaranteed-correct unit; this is documented in `backend/app/services/dimensions/wikidata.py`. The frontend hasn't been changed as part of this - it talks to whichever backend Docker Compose points it at.
+
+- [x] MVP: Text-based item lookup and STL generation
+- [x] Real dimension lookup (Wikidata + manufacturer schema.org + Wikipedia)
+- [ ] Image-based item recognition with scale reference
+- [ ] User customization (wall thickness, lip, labels, etc.)
+- [ ] Design gallery and shareable links
 - [ ] Cloud deployment + CDN hosting of generated STL files
 
 ---
 
 ## Contributing
-1. Fork the repository and create a feature branch  
-2. Make commits with clear messages  
+1. Fork the repository and create a feature branch
+2. Make commits with clear messages
 3. Open a Pull Request
 
 Feel free to raise issues or request features via GitHub Issues.
