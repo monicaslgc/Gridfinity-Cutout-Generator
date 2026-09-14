@@ -43,8 +43,8 @@ Users can describe an object (or upload a photo), and the system:
 
 ### Running with Docker
 ```bash
-git clone https://github.com/<your-org>/<your-repo>.git
-cd <your-repo>
+git clone https://github.com/monicaslgc/Gridfinity-Cutout-Generator.git
+cd Gridfinity-Cutout-Generator
 docker compose up --build
 ```
 
@@ -204,6 +204,8 @@ Generates STL files corresponding to a selected container proposal.
 ---
 
 ## Development Roadmap
+
+Current status: the backend has a working parametric box-generation endpoint (/generate + /download); the LLM item-identification, dimension-lookup, and proposal endpoints described above (/identify, /dimensions, /proposals, /stl) that the frontend already expects are not built yet, so the frontend falls back to its Demo mode until they exist.
 - [ ] MVP: Text-based item lookup and STL generation  
 - [ ] Image-based item recognition with scale reference  
 - [ ] User customization (wall thickness, lip, labels, etc.)  
