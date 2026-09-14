@@ -205,8 +205,8 @@ Generates STL files corresponding to a selected container proposal.
 
 ## Development Roadmap
 
-Current status: the backend has a working parametric box-generation endpoint (/generate + /download); the LLM item-identification, dimension-lookup, and proposal endpoints described above (/identify, /dimensions, /proposals, /stl) that the frontend already expects are not built yet, so the frontend falls back to its Demo mode until they exist.
-- [ ] MVP: Text-based item lookup and STL generation  
+Current status: /identify and /dimensions are live against a small local mock catalog (keyword matching, not a real LLM or web lookup yet). /proposals and /stl are real: real Gridfinity slot math and a real CadQuery-generated STL. The flow works end to end locally with mock data - swapping the catalog for a real LLM + dimension lookup is the next step.
+- [x] MVP: Text-based item lookup and STL generation  
 - [ ] Image-based item recognition with scale reference  
 - [ ] User customization (wall thickness, lip, labels, etc.)  
 - [ ] Design gallery and shareable links  
