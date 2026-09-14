@@ -1,39 +1,55 @@
 from __future__ import annotations
 from typing import Optional
-import httpx
-import re
+
+import requests
+
 from ..types import DimensionsResult
 from ..parse import normalize_dims_from_text
 
+API_ENDPOINT = "https://en.wikipedia.org/w/api.php"
+HEADERS = {
+    "User-Agent": "GridfinityCutoutGenerator/0.1 (https://github.com/monicaslgc/Gridfinity-Cutout-Generator)"
+}
 
-_HEADERS = {"User-Agent": "GridfinityCutoutBot/1.0 (+dimensions)"}
 
+def fetch_wikipedia_dimensions(title: str) -> Optional[DimensionsResult]:
+    """Best-effort fallback: pull the plain-text extract of a Wikipedia
+    article and regex out an "L x W x H" style dimensions string. Much less
+    reliable than Wikidata or schema.org, so it gets a lower confidence.
+    """
+    if not title or not title.strip():
+        return None
 
-_DIM_ROW_RE = re.compile(r"<tr>\s*<th[^>]*>\s*Dimensions\s*</th>\s*<td[^>]*>(.*?)</td>", re.IGNORECASE | re.DOTALL)
+    params = {
+        "action": "query",
+        "prop": "extracts",
+        "explaintext": 1,
+        "titles": title,
+        "format": "json",
+    }
+    try:
+        resp = requests.get(API_ENDPOINT, params=params, headers=HEADERS, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception:
+        return None
 
+    pages = data.get("query", {}).get("pages", {})
+    text = ""
+    for page in pages.values():
+        text = page.get("extract") or ""
+        break
 
-async def fetch_wikipedia_dimensions(page_title: str) -> Optional[DimensionsResult]:
-# English Wikipedia only for now
-url = f"https://en.wikipedia.org/wiki/{page_title.replace(' ', '_')}"
-async with httpx.AsyncClient(headers=_HEADERS, timeout=15) as client:
-r = await client.get(url)
-if r.status_code != 200:
-return None
-html = r.text
-m = _DIM_ROW_RE.search(html)
-if not m:
-return None
-cell = re.sub(r"<[^>]+>", " ", m.group(1))
-cell = re.sub(r"\s+", " ", cell).strip()
-parsed = normalize_dims_from_text(cell)
-if not parsed:
-return None
-return DimensionsResult(
-dims_mm=parsed,
-source="Wikipedia infobox",
-source_url=url,
-confidence=0.6,
-evidence=[f"Infobox cell: {cell}"],
-raw=cell,
-)
+    dims = normalize_dims_from_text(text)
+    if not dims:
+        return None
 
+    return DimensionsResult(
+        name=title,
+        dims_mm=dims,
+        source="Wikipedia (text extract)",
+        source_url=f"https://en.wikipedia.org/wiki/{title.replace(' ', '_')}",
+        confidence=0.4,
+        evidence=[f"Regex-matched dimensions string in Wikipedia extract for {title!r}"],
+        raw={"matched_text": text[:200]},
+    )
