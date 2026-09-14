@@ -5,7 +5,7 @@ from typing import List
 
 try:
     import cadquery as cq
-except Exception as e:  # pragma: no cover
+except Exception:  # pragma: no cover
     cq = None
 
 from ..models import STLRequest, STLFile, Proposal
@@ -15,47 +15,64 @@ from ..models import STLRequest, STLFile, Proposal
 class GFParams:
     grid_xy: float = 42.0
     grid_z: float = 7.0
-    wall: float = 2.0
-    base: float = 3.0
+    wall: float = 2.0  # also doubles as floor thickness via shell() below
     lip_h: float = 1.6
 
 
-def _bin_outer_dims(p: Proposal, g: GFParams) -> tuple[float, float, float]:
+def _bin_outer_dims(p: Proposal, g: GFParams) -> "tuple[float, float, float]":
     x = p.x_slots * g.grid_xy
     y = p.y_slots * g.grid_xy
     z = p.z_units * g.grid_z
     return x, y, z
 
 
-def _make_bin(p: Proposal, label: str | None, options: dict, g: GFParams) -> "cq.Workplane":
+def _make_bin(p: Proposal, label: "str | None", options: dict, g: GFParams) -> "cq.Workplane":
+    """Build a simplified Gridfinity-style bin: a hollow box sized to the
+    grid, with an optional chamfered top edge (a lightweight nod to the
+    Gridfinity stacking lip - not the full interlocking profile) and
+    optional magnet/screw holes at the base corners.
+
+    Why this replaced the previous version: the previous "lip" unioned a
+    full-footprint solid slab directly onto the open top of the cavity,
+    which sealed the container shut instead of leaving it open, and a
+    second cutBlind() from a workplane offset below the part's own bottom
+    face never actually intersected the solid (a dead no-op). Both are
+    replaced with the same hollow-then-chamfer-then-drill approach already
+    validated end to end - including a combined lip+magnets+screws case and
+    a smallest-possible-bin edge case - in backend/main.py's equivalent
+    builder.
+    """
     assert cq is not None, "CadQuery is required to generate STL"
     x, y, z = _bin_outer_dims(p, g)
 
-    wp = cq.Workplane("XY")
-    body = (
-        wp.box(x, y, z)  # outer block
-        .faces(">Z").workplane().rect(x - 2 * g.wall, y - 2 * g.wall).cutBlind(-(z - g.base))
-    )
+    body = cq.Workplane("XY").box(x, y, z, centered=(True, True, False))
 
-    # lip
     if options.get("lip", True):
-        lip = (
-            cq.Workplane("XY")
-            .box(x, y, g.lip_h)
-            .translate((0, 0, z / 2 + g.lip_h / 2))
-        )
-        body = body.union(lip)
+        chamfer_mm = min(g.lip_h, g.wall * 0.5)
+        try:
+            body = body.faces(">Z").edges().chamfer(chamfer_mm)
+        except Exception:
+            # Chamfer can fail on degenerate/too-small edges for unusual
+            # sizes; skip it rather than break STL generation entirely.
+            pass
 
-    # basic cutout based on item dims
-    # NOTE(why): clearance handled by proposal; use a centered pocket in the floor
-    cut_L = max(1.0, p.clearance + options.get("extra_clearance", 0))
-    body = (
-        body.faces("<Z").workplane(offset=g.base + 0.2)
-        .rect(x - 2 * g.wall - 2.0, y - 2 * g.wall - 2.0)
-        .cutBlind(- (z - g.base - 0.4))
-    )
+    # Hollow into an open-top container; wall thickness doubles as floor
+    # thickness here, which is the standard shell() behavior. Must run
+    # after the chamfer above, not before - shell() consumes the face
+    # whose edges the chamfer needs.
+    body = body.faces(">Z").shell(-g.wall)
 
-    # TODO: magnets/screws (stub for now)
+    if options.get("magnets") or options.get("screws"):
+        inset = 8.0
+        hx = x / 2 - inset
+        hy = y / 2 - inset
+        corner_points = [(hx, hy), (-hx, hy), (hx, -hy), (-hx, -hy)]
+
+        if options.get("magnets"):
+            body = body.faces("<Z").workplane().pushPoints(corner_points).hole(6.5, 2.4)
+        if options.get("screws"):
+            body = body.faces("<Z").workplane().pushPoints(corner_points).hole(3.2)
+
     return body
 
 
