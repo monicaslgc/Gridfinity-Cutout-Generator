@@ -265,18 +265,21 @@ def build_gridfinity_bin(x_slots: int, y_slots: int, z_units: int, lip: bool, ma
 
     body = cq.Workplane("XY").box(outer_w, outer_d, outer_h, centered=(True, True, False))
 
-    # Hollow it into an open-top container; wall thickness doubles as floor
-    # thickness here, which is the standard shell() behavior.
-    body = body.faces(">Z").shell(-WALL_THICKNESS)
-
     if lip:
+        # Chamfer the top edges of the still-solid box, before hollowing it
+        # out - much more reliable than trying to chamfer the rim left
+        # behind by shell() afterward.
         chamfer_mm = min(1.2, WALL_THICKNESS * 0.5)
         try:
-            body = body.edges("|Z and >Z").chamfer(chamfer_mm)
+            body = body.faces(">Z").edges().chamfer(chamfer_mm)
         except Exception:
             # Chamfer can fail on degenerate/too-small edges for unusual
             # sizes; skip it rather than break STL generation entirely.
             pass
+
+    # Hollow it into an open-top container; wall thickness doubles as floor
+    # thickness here, which is the standard shell() behavior.
+    body = body.faces(">Z").shell(-WALL_THICKNESS)
 
     if magnets or screws:
         inset = 8.0
