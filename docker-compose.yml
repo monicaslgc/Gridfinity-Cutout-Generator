@@ -4,12 +4,10 @@ services:
   backend:
     build: ./backend
     container_name: gridfinity-backend
-    # NOTE: this points at the flat backend/main.py, not backend/app/main.py.
-    # backend/app/ is a more ambitious (real Wikidata/schema.org/Wikipedia
-    # dimension lookup) backend that predates this file, but it currently
-    # fails to import - see backend/tests/test_app_package_status.py and
-    # the top-level README's Development Roadmap for details.
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    # Runs app/main.py - the real Wikidata/schema.org/Wikipedia dimension
+    # lookup backend. (It was broken/unimportable for a while and this used
+    # to point at the flat backend/main.py mock instead; that's fixed now.)
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - ./backend:/app
     ports:
