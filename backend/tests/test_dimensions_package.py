@@ -83,6 +83,35 @@ def test_normalize_dims_from_text_no_match_returns_none():
     assert normalize_dims_from_text("no numbers here") is None
 
 
+def test_normalize_dims_from_text_parses_pair_with_by():
+    # Wikipedia's conventional phrasing for flat/2D items, e.g. the real
+    # "Credit card" article's "85.60 by 53.98 millimeters" (ISO/IEC 7810
+    # ID-1) - confirmed against the live article while investigating why
+    # the functional test's candidate items weren't resolving dimensions.
+    assert normalize_dims_from_text("85.60 by 53.98 millimeters") == {
+        "L": 85.6,
+        "W": 53.98,
+    }
+
+
+def test_normalize_dims_from_text_pair_does_not_fabricate_height():
+    # A 2-number pair must never invent an "H" - see the note above
+    # _PAIR_RE in parse.py for why guessing a thickness would repeat the
+    # same mistake the plausibility bound was added to fix earlier this
+    # investigation.
+    result = normalize_dims_from_text("85.60 by 53.98 millimeters")
+    assert "H" not in result
+
+
+def test_normalize_dims_from_text_prefers_triplet_over_pair():
+    # When a real triplet is present, don't fall back to pair-matching.
+    assert normalize_dims_from_text("152 x 106 x 60 mm") == {
+        "L": 152.0,
+        "W": 106.0,
+        "H": 60.0,
+    }
+
+
 # --- wikidata.py ----------------------------------------------------------
 
 
@@ -205,6 +234,24 @@ def test_fetch_wikipedia_dimensions_no_match_returns_none():
     fake_response.raise_for_status.return_value = None
     with patch("app.services.dimensions.providers.wikipedia.requests.get", return_value=fake_response):
         assert wikipedia.fetch_wikipedia_dimensions("Widget") is None
+
+
+def test_fetch_wikipedia_dimensions_parses_pair_extract():
+    # Integration check for the real gap found this investigation: the
+    # "Credit card" Wikipedia article states its size as a 2-number "by"
+    # pair, not a 3-number triplet - this is what lets that fallback
+    # actually contribute L/W instead of silently matching nothing.
+    fake_response = MagicMock()
+    fake_response.json.return_value = {
+        "query": {"pages": {"123": {"extract": "The Widget measures 85.60 by 53.98 millimeters."}}}
+    }
+    fake_response.raise_for_status.return_value = None
+    with patch("app.services.dimensions.providers.wikipedia.requests.get", return_value=fake_response):
+        result = wikipedia.fetch_wikipedia_dimensions("Widget")
+
+    assert result is not None
+    assert result.dims_mm == {"L": 85.6, "W": 53.98}
+    assert not result.is_complete()
 
 
 # --- fetcher.py orchestration -----------------------------------------------
