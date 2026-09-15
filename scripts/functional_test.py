@@ -9,11 +9,17 @@ bytes. That's the feature this whole project exists to provide, and
 nothing before this test actually exercised it end-to-end against a live
 running stack.
 
-/dimensions depends on real external lookups (Wikidata, manufacturer
-schema.org, Wikipedia), so not every item name will resolve - this tries
-a short list of common, well-documented objects and uses the first one
-that resolves to real dimensions, rather than hard-coding a single item
-that might stop resolving if its Wikidata entry changes.
+/dimensions only succeeds when the resolved Wikidata item has all three
+of P2043 (length), P2049 (width), and P2048 (height) populated - see
+backend/app/services/dimensions/wikidata.py. Most everyday consumer
+items on Wikidata do NOT have these three specific properties filled in
+(this test found that out the hard way against "Rubik's Cube" and
+"iPhone 15", which both resolve to a real QID but 404 on /dimensions),
+so this tries a list of items chosen because their Wikidata entries are
+likely to carry precise physical dimensions (ISO-standardised formats,
+well-documented consumer electronics), and uses the first one that
+actually resolves to real dimensions rather than hard-coding a single
+item that might stop resolving if Wikidata's data changes.
 
 Uses only the standard library (urllib) so it needs no extra pip install
 step in CI.
@@ -23,23 +29,25 @@ from __future__ import annotations
 import json
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 BASE = "http://localhost:8000"
 
-# Ordinary, well-known objects likely to have a Wikidata entry with
-# physical dimensions (height/width/length/diameter properties).
 CANDIDATE_ITEMS = [
+    "Credit card",
+    "A4 paper",
+    "US Letter paper",
+    "Nintendo Switch",
+    "PlayStation 5",
+    "iPad",
+    "MacBook Air",
+    "Xbox Series X",
+    "Business card",
+    "Playing card",
     "Rubik's Cube",
     "iPhone 15",
-    "Zippo lighter",
-    "Nintendo Switch",
-    "Post-it Note",
-    "AA battery",
-    "Golf ball",
-    "Hydro Flask water bottle",
     "Nintendo Switch Pro Controller",
-    "Tennis ball",
 ]
 
 
@@ -75,8 +83,14 @@ def main() -> None:
             continue
         cid = resp["candidates"][0]["id"]
 
-        dstatus, dresp = call("GET", f"/dimensions?id={cid}")
-        print(f"dimensions(id={cid}) -> {dstatus}: {dresp}")
+        # cid isn't always a bare Wikidata QID - identify_from_text can
+        # return a synthetic "unresolved:<text>" id when it can't resolve
+        # one, which contains spaces/colons and must be URL-encoded or
+        # urllib raises InvalidURL outright (found the hard way in the
+        # first version of this script).
+        encoded_id = urllib.parse.quote(cid, safe="")
+        dstatus, dresp = call("GET", f"/dimensions?id={encoded_id}")
+        print(f"dimensions(id={cid!r}) -> {dstatus}: {dresp}")
         if dstatus == 200 and dresp.get("dims_mm"):
             dims = dresp["dims_mm"]
             item_id = cid
@@ -84,7 +98,10 @@ def main() -> None:
             break
 
     if dims is None:
-        fail("no candidate item resolved to real dimensions via /identify + /dimensions")
+        fail(
+            "no candidate item resolved to real dimensions via /identify + "
+            "/dimensions (tried: " + ", ".join(CANDIDATE_ITEMS) + ")"
+        )
 
     print(f"\nResolved {item_name!r} -> id={item_id}, dims_mm={dims}\n")
 
