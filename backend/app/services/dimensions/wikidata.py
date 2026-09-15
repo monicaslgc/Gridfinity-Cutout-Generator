@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import re
 from typing import Optional
 
@@ -72,8 +73,35 @@ def _as_mm(raw_value: Optional[str]) -> Optional[float]:
 
 
 def fetch_wikidata_dimensions(qid: Optional[str]) -> Optional[DimensionsResult]:
-    """Look up L/W/H for a Wikidata QID via SPARQL. Returns None if `qid`
-    isn't a well-formed QID, the query fails, or no dimensions are found.
+    """Look up L/W/H for a Wikidata QID via SPARQL.
+
+    Returns None only if `qid` isn't a well-formed QID, the query fails
+    outright, or Wikidata has no English label for the item at all (so
+    there is nothing usable to hand back even as a fallback label).
+
+    IMPORTANT (bug fix): this used to return None whenever none of
+    P2043/P2049/P2048 were populated - which discarded the item's
+    `itemLabel` along with the missing dimensions. That silently broke
+    the Wikipedia fallback in fetcher.py for the normal `/dimensions?id=`
+    flow (the one /identify -> /dimensions actually uses): fetcher.py's
+    label fallback is `(best.name if best else None) or query`, and with
+    `best` coming back None and no free-text `query` given (callers pass
+    a QID, not text, once an item has been identified), `label` ended up
+    None and the Wikipedia lookup was never attempted at all - regardless
+    of whether Wikipedia's article actually had the dimensions in text.
+    A functional test against 13 real, well-known items (credit card, A4
+    paper, Nintendo Switch, iPhone 15, Rubik's Cube, etc.) found this:
+    every single one resolved to a real Wikidata QID and then 404'd on
+    /dimensions, because none of them happen to have all of P2043/P2049/
+    P2048 filled in on Wikidata - a very common situation for consumer
+    products - and the Wikipedia fallback that should have caught most of
+    them never ran.
+
+    Now, whenever the SPARQL query returns a row at all (i.e. the QID
+    resolves to a real, labeled Wikidata item), a DimensionsResult is
+    returned even if dims_mm ends up empty - with confidence 0.0 so it
+    never outranks a real measurement via merge_missing, but carrying the
+    item's name so fetcher.py has something to search Wikipedia with.
     """
     if not qid or not _QID_RE.match(qid):
         return None
@@ -94,6 +122,8 @@ def fetch_wikidata_dimensions(qid: Optional[str]) -> Optional[DimensionsResult]:
     def get(key: str) -> Optional[str]:
         return row[key]["value"] if key in row else None
 
+    name = get("itemLabel") or qid
+
     dims = {}
     length_mm = _as_mm(get("length"))
     width_mm = _as_mm(get("width"))
@@ -104,12 +134,26 @@ def fetch_wikidata_dimensions(qid: Optional[str]) -> Optional[DimensionsResult]:
         dims["W"] = width_mm
     if height_mm is not None:
         dims["H"] = height_mm
+
     if not dims:
-        return None
+        # No dimension properties on Wikidata for this item - still hand
+        # back the resolved name (confidence 0.0) so callers can fall
+        # back to Wikipedia/schema.org with real search text instead of
+        # giving up outright.
+        return DimensionsResult(
+            item_id=qid,
+            name=name,
+            dims_mm={},
+            source="Wikidata",
+            source_url=f"https://www.wikidata.org/wiki/{qid}",
+            confidence=0.0,
+            evidence=[f"Wikidata {qid}: no P2043/P2049/P2048 found"],
+            raw=row,
+        )
 
     return DimensionsResult(
         item_id=qid,
-        name=get("itemLabel") or qid,
+        name=name,
         dims_mm=dims,
         source="Wikidata",
         source_url=f"https://www.wikidata.org/wiki/{qid}",
