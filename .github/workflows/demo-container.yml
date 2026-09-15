@@ -1,0 +1,58 @@
+name: demo-container
+
+# Manually generate real Gridfinity STL files for any item's real-world
+# dimensions, using the actual /proposals + /stl pipeline (backend/scripts/
+# generate_demo_container.py). Run from the Actions tab: "Run workflow" and
+# fill in the item's name/id and L/W/H in mm - useful for a quick end-to-end
+# check, or to produce a real STL for something without standing up the
+# full stack.
+on:
+  workflow_dispatch:
+    inputs:
+      item_id:
+        description: "Item id (e.g. an ASIN or QID)"
+        required: true
+      name:
+        description: "Item name / label"
+        required: true
+      length_mm:
+        description: "Length (L) in mm"
+        required: true
+      width_mm:
+        description: "Width (W) in mm"
+        required: true
+      height_mm:
+        description: "Height (H) in mm"
+        required: true
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install -U pip
+          python -m pip install -r requirements.txt
+      - name: Generate containers
+        run: |
+          python -m scripts.generate_demo_container \
+            --item-id "${{ github.event.inputs.item_id }}" \
+            --name "${{ github.event.inputs.name }}" \
+            --l "${{ github.event.inputs.length_mm }}" \
+            --w "${{ github.event.inputs.width_mm }}" \
+            --h "${{ github.event.inputs.height_mm }}" \
+            --out demo_output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gridfinity-containers
+          path: backend/demo_output/*.stl
+          retention-days: 7
