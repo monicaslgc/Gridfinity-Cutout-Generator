@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import re
 from typing import Dict, Optional, Tuple
 
@@ -9,11 +10,23 @@ _UNIT_ALT = (
     r"|in|inch|inches|ft|foot|feet|″|′"
 )
 
+# The unit group used to be optional ((?P<unit>...)?), which let this match
+# a bare "2 x 2 x 2" anywhere in an article with no attached unit at all -
+# found for real against the "Rubik's Cube" Wikipedia article, where the
+# regex matched an unrelated "2x2x2" mention (the Pocket Cube variant, not
+# a measurement) and normalize_dims_from_text() then silently treated it
+# as "2mm x 2mm x 2mm" (defaulting a missing unit to mm). That fed a
+# physically absurd ~2mm item size all the way through to a "successful"
+# /dimensions response, and downstream to a corrupt 46-byte STL file - a
+# functional test walking the real pipeline caught this, not a code
+# review. A bare number triplet with no unit is far too likely to be a
+# move count, model number, grid size, or anything else - requiring an
+# attached unit for a match is a cheap, real reduction in false positives.
 _TRIPLET_RE = re.compile(
     r"(?P<a>\d{1,4}(?:[.,]\d{1,3})?)\s*[x×*]\s*"
     r"(?P<b>\d{1,4}(?:[.,]\d{1,3})?)\s*[x×*]\s*"
     r"(?P<c>\d{1,4}(?:[.,]\d{1,3})?)\s*"
-    r"(?P<unit>" + _UNIT_ALT + r")?",
+    r"(?P<unit>" + _UNIT_ALT + r")",
     re.IGNORECASE,
 )
 
@@ -28,7 +41,12 @@ def _to_float(raw: str) -> float:
 
 
 def parse_triplet(text: str) -> Optional[Tuple[float, float, float, Optional[str]]]:
-    """Match a "152 x 106 x 60 mm" style triplet anywhere in `text`."""
+    """Match a "152 x 106 x 60 mm" style triplet anywhere in `text`.
+
+    A unit suffix is required for a match - see the note above _TRIPLET_RE
+    for why a unit-less "N x N x N" is deliberately not treated as a
+    dimensions string.
+    """
     match = _TRIPLET_RE.search(text)
     if not match:
         return None
