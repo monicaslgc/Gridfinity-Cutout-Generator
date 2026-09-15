@@ -11,9 +11,9 @@ FROM base AS deps
 COPY frontend/package.json frontend/package-lock.json* frontend/pnpm-lock.yaml* frontend/yarn.lock* ./
 # Default to npm; if you use yarn or pnpm, adjust the install command
 RUN if [ -f package-lock.json ]; then npm ci; \
-    elif [ -f yarn.lock ]; then corepack enable && yarn install --frozen-lockfile; \
-    elif [ -f pnpm-lock.yaml ]; then corepack enable && pnpm install --frozen-lockfile; \
-    else npm install; fi
+elif [ -f yarn.lock ]; then corepack enable && yarn install --frozen-lockfile; \
+elif [ -f pnpm-lock.yaml ]; then corepack enable && pnpm install --frozen-lockfile; \
+else npm install; fi
 
 # ---------- Development image ----------
 # Used by docker-compose with `npm run dev` (hot reload)
@@ -28,6 +28,16 @@ CMD ["npm", "run", "dev"]
 FROM base AS build
 COPY --from=deps /app/node_modules /app/node_modules
 COPY frontend/ ./
+# This app (frontend/frontend/) doesn't ship a public/ directory - Next.js
+# doesn't require one. But the runtime stage below always does
+# `COPY --from=build /app/public /app/public`, and Docker's COPY fails
+# outright (build error, not a silent skip) if the source path doesn't
+# exist. `docker compose build` caught this for real: the runtime copy
+# failed with "/app/public": not found once the backend and frontend
+# build stages both succeeded. Guarantee the directory exists here so the
+# runtime copy always has something to copy, whether or not this app ever
+# grows a real public/ folder.
+RUN mkdir -p public
 # If you set environment variables at build time (e.g., NEXT_PUBLIC_*), pass them via --build-arg or envs
 RUN npm run build
 
