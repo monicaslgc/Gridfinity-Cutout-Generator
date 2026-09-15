@@ -1,0 +1,21 @@
+name: docker-build
+
+# Actually build both Docker images the way `docker compose up --build`
+# would - the documented "Getting Started" path in the README. Neither the
+# backend nor frontend CI workflow exercises this: backend.yml installs
+# with plain pip, frontend.yml runs npm directly. That gap is exactly how
+# docker-compose.yml's build context/volume mismatches went unnoticed (see
+# the "Fix docker-compose.yml" commit) - this job would have caught both.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker compose build
+        run: docker compose build
