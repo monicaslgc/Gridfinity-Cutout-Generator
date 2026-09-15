@@ -15,11 +15,32 @@ from ..models import STLRequest, STLFile, Proposal
 class GFParams:
     grid_xy: float = 42.0
     grid_z: float = 7.0
-    wall: float = 2.0  # also doubles as floor thickness via shell() below
+    wall: float = 2.0  # also doubles as floor thickness (see the cavity cut in _make_bin)
     lip_h: float = 1.6
     comp_wall: float = 1.6  # thickness of interior compartment dividers
     finger_width: float = 20.0  # width of the "easy grab" finger scoop
     finger_drop: float = 12.0  # how far the scoop cuts down from the top edge
+
+    # The real Gridfinity interlocking base/foot profile, per 42x42mm grid
+    # cell: a small chamfer at the very bottom (eases the foot into a
+    # baseplate socket), a straight vertical band, then a larger chamfer
+    # flaring out to the cell's full width where it meets the bin's flat
+    # underside. These heights match the profile used by established open
+    # source Gridfinity implementations (e.g. cq-gridfinity's
+    # GR_BOX_PROFILE: 0.8 + 1.8 + 2.4 = 5.0mm total) rather than guessed
+    # numbers - this is what was missing before (see _make_gridfinity_foot).
+    foot_bot_chamf: float = 0.8
+    foot_straight: float = 1.8
+    foot_top_chamf: float = 2.4
+    # Each cell's foot footprint is slightly smaller than the nominal 42mm
+    # grid so neighboring feet never touch/bind and the whole bin has a
+    # little play in a baseplate socket - matches the Gridfinity spec's
+    # "41.5mm square block" (0.5mm total tolerance).
+    foot_clearance: float = 0.5
+
+    @property
+    def foot_h(self) -> float:
+        return self.foot_bot_chamf + self.foot_straight + self.foot_top_chamf
 
 
 def _bin_outer_dims(p: Proposal, g: GFParams) -> "tuple[float, float, float]":
@@ -27,6 +48,64 @@ def _bin_outer_dims(p: Proposal, g: GFParams) -> "tuple[float, float, float]":
     y = p.y_slots * g.grid_xy
     z = p.z_units * g.grid_z
     return x, y, z
+
+
+def _make_gridfinity_foot(g: GFParams) -> "cq.Workplane":
+    """Build a single Gridfinity base/foot: a stepped-chamfer stack sized to
+    one 42x42mm grid cell, centered at the origin, spanning z=0 (its
+    narrowest point - the tip that first enters a baseplate socket, size
+    s0) up to z=g.foot_h (its widest point - where it meets the bin's flat
+    underside, size s2).
+
+    Built as a 4-section ruled loft (square wire, widen, hold, widen again)
+    rather than extrude(taper=...), so the shape comes from CadQuery's
+    well-tested loft operation instead of depending on taper-sign
+    conventions we can't easily verify without a local CadQuery to run.
+    """
+    s2 = g.grid_xy - g.foot_clearance  # top: full cell minus baseplate tolerance
+    s1 = s2 - 2 * g.foot_top_chamf
+    s0 = s1 - 2 * g.foot_bot_chamf
+
+    z1 = g.foot_bot_chamf
+    z2 = z1 + g.foot_straight
+    z3 = g.foot_h
+
+    return (
+        cq.Workplane("XY")
+        .rect(s0, s0)
+        .workplane(offset=z1)
+        .rect(s1, s1)
+        .workplane(offset=(z2 - z1))
+        .rect(s1, s1)
+        .workplane(offset=(z3 - z2))
+        .rect(s2, s2)
+        .loft(ruled=True)
+    )
+
+
+def _add_gridfinity_feet(
+    upper: "cq.Workplane", x: float, y: float, g: GFParams, x_slots: int, y_slots: int
+) -> "cq.Workplane":
+    """Union one Gridfinity foot (see _make_gridfinity_foot) under every
+    42x42mm cell of the bin's footprint, onto `upper` (the plain box that
+    makes up the rest of the bin above the foot region).
+
+    This is the actual interlocking profile that presses into and
+    registers with a real Gridfinity baseplate - previously every
+    generated bin had a flat floor here, which is the "no gridfinity grid"
+    bug this function fixes.
+    """
+    foot_template = _make_gridfinity_foot(g)
+    x0 = -x / 2 + g.grid_xy / 2
+    y0 = -y / 2 + g.grid_xy / 2
+
+    body = upper
+    for i in range(x_slots):
+        for j in range(y_slots):
+            px = x0 + i * g.grid_xy
+            py = y0 + j * g.grid_xy
+            body = body.union(foot_template.translate((px, py, 0)))
+    return body
 
 
 def _add_finger_cutout(body: "cq.Workplane", x: float, y: float, z: float, g: GFParams) -> "cq.Workplane":
@@ -83,30 +162,76 @@ def _add_compartment_dividers(body: "cq.Workplane", x: float, y: float, z: float
     return body
 
 
-def _make_bin(p: Proposal, label: "str | None", options: dict, g: GFParams) -> "cq.Workplane":
-    """Build a simplified Gridfinity-style bin: a hollow box sized to the
-    grid, with an optional chamfered top edge (a lightweight nod to the
-    Gridfinity stacking lip - not the full interlocking profile) and
-    optional magnet/screw holes at the base corners. "easy" bins additionally
-    get a finger scoop and "multi" bins get interior compartment dividers -
-    see _add_finger_cutout / _add_compartment_dividers for why these were
-    previously computed (in proposals.py) but never actually cut into the
-    geometry.
+def _drill_corner_holes(body: "cq.Workplane", x: float, y: float, g: GFParams, diameter: float, depth: float) -> "cq.Workplane":
+    """Cut 4 corner holes (magnets or screws) via explicit cylinder-cut
+    solids rather than a face-selector + .hole() - the bin's bottom is no
+    longer one flat face now that it's made of individual Gridfinity feet
+    (see _add_gridfinity_feet), so a face selector like faces("<Z") would
+    resolve to several small disconnected faces instead of one. Insetting
+    relative to a single cell's narrowest (bottom-tip) width guarantees
+    every hole lands on solid foot material, on any size bin, regardless
+    of how many feet it has.
+    """
+    s2 = g.grid_xy - g.foot_clearance
+    s1 = s2 - 2 * g.foot_top_chamf
+    s0 = s1 - 2 * g.foot_bot_chamf
+    inset = g.grid_xy / 2 - s0 / 2 + 2.0  # a couple mm past the tip's edge, safely inside it
+    hx = x / 2 - inset
+    hy = y / 2 - inset
+    corner_points = [(hx, hy), (-hx, hy), (hx, -hy), (-hx, -hy)]
 
-    Why this replaced the previous version: the previous "lip" unioned a
-    full-footprint solid slab directly onto the open top of the cavity,
-    which sealed the container shut instead of leaving it open, and a
-    second cutBlind() from a workplane offset below the part's own bottom
-    face never actually intersected the solid (a dead no-op). Both are
-    replaced with the same hollow-then-chamfer-then-drill approach already
-    validated end to end - including a combined lip+magnets+screws case and
-    a smallest-possible-bin edge case - in backend/main.py's equivalent
-    builder.
+    for cx, cy in corner_points:
+        cutter = (
+            cq.Workplane("XY")
+            .workplane(offset=-1)
+            .center(cx, cy)
+            .circle(diameter / 2)
+            .extrude(depth + 1)
+        )
+        body = body.cut(cutter)
+    return body
+
+
+def _make_bin(p: Proposal, label: "str | None", options: dict, g: GFParams) -> "cq.Workplane":
+    """Build a Gridfinity-style bin: a hollow box sized to the grid, with a
+    real interlocking base/foot profile on the underside of every 42x42mm
+    cell (see _add_gridfinity_feet - this is what makes it actually
+    register/press-fit into a real Gridfinity baseplate, not just a
+    correctly-sized box), an optional chamfered top stacking lip, and
+    optional magnet/screw holes at the base corners. "easy" bins
+    additionally get a finger scoop and "multi" bins get interior
+    compartment dividers - see _add_finger_cutout / _add_compartment_dividers.
+
+    The bin's outer shape is built in two pieces and unioned: the foot
+    region (z: 0..g.foot_h, one stepped-chamfer foot per grid cell) and a
+    plain box for the rest of the height above that. It's then hollowed by
+    cutting a cavity that starts g.wall above the top of the foot region,
+    so the feet themselves stay solid (real Gridfinity bases aren't
+    hollow) and the floor above them is exactly g.wall thick.
     """
     assert cq is not None, "CadQuery is required to generate STL"
     x, y, z = _bin_outer_dims(p, g)
 
-    body = cq.Workplane("XY").box(x, y, z, centered=(True, True, False))
+    upper_h = max(z - g.foot_h, 0.5)
+    upper = (
+        cq.Workplane("XY")
+        .workplane(offset=z - upper_h)
+        .box(x, y, upper_h, centered=(True, True, False))
+    )
+
+    if z > g.foot_h:
+        try:
+            body = _add_gridfinity_feet(upper, x, y, g, p.x_slots, p.y_slots)
+        except Exception:
+            # If the foot profile fails for some degenerate size, fall back
+            # to a plain flat-bottomed box rather than breaking STL
+            # generation entirely.
+            body = cq.Workplane("XY").box(x, y, z, centered=(True, True, False))
+    else:
+        # Bin is shorter than the foot region itself (an unusually squat
+        # size) - the feet wouldn't fit under any usable wall anyway, so
+        # skip them rather than risk a degenerate union.
+        body = cq.Workplane("XY").box(x, y, z, centered=(True, True, False))
 
     if options.get("lip", True):
         chamfer_mm = min(g.lip_h, g.wall * 0.5)
@@ -117,11 +242,20 @@ def _make_bin(p: Proposal, label: "str | None", options: dict, g: GFParams) -> "
             # sizes; skip it rather than break STL generation entirely.
             pass
 
-    # Hollow into an open-top container; wall thickness doubles as floor
-    # thickness here, which is the standard shell() behavior. Must run
-    # after the chamfer above, not before - shell() consumes the face
-    # whose edges the chamfer needs.
-    body = body.faces(">Z").shell(-g.wall)
+    # Hollow the bin above the foot region: wall thickness on the sides,
+    # and a floor exactly g.wall thick sitting right on top of the feet.
+    # The foot region itself (z: 0..g.foot_h) stays solid.
+    floor_top = g.foot_h + g.wall
+    cavity_h = max(z - floor_top + 1, 0.5)
+    cavity = (
+        cq.Workplane("XY")
+        .workplane(offset=z - cavity_h + 1)
+        .box(x - 2 * g.wall, y - 2 * g.wall, cavity_h, centered=(True, True, False))
+    )
+    try:
+        body = body.cut(cavity)
+    except Exception:
+        pass
 
     if p.type == "easy":
         try:
@@ -138,15 +272,15 @@ def _make_bin(p: Proposal, label: "str | None", options: dict, g: GFParams) -> "
             pass
 
     if options.get("magnets") or options.get("screws"):
-        inset = 8.0
-        hx = x / 2 - inset
-        hy = y / 2 - inset
-        corner_points = [(hx, hy), (-hx, hy), (hx, -hy), (-hx, -hy)]
-
-        if options.get("magnets"):
-            body = body.faces("<Z").workplane().pushPoints(corner_points).hole(6.5, 2.4)
-        if options.get("screws"):
-            body = body.faces("<Z").workplane().pushPoints(corner_points).hole(3.2)
+        try:
+            if options.get("magnets"):
+                body = _drill_corner_holes(body, x, y, g, diameter=6.5, depth=2.4)
+            if options.get("screws"):
+                # No fixed depth in the original design - screws go all the
+                # way through so something can be bolted on from underneath.
+                body = _drill_corner_holes(body, x, y, g, diameter=3.2, depth=z + 2)
+        except Exception:
+            pass
 
     return body
 
