@@ -207,11 +207,14 @@ Current status: there are two backends in `backend/`. `backend/main.py` is a sma
 
 Each proposal type now produces genuinely different geometry, not just a different size: Snug Fit is a plain hollow bin, Easy Grab additionally cuts a finger scoop into the front wall, and Multi-purpose additionally cuts interior divider walls splitting the cavity into the proposed number of compartments. All three still get the stacking lip and optional magnet/screw holes.
 
-Known caveats: `/identify-image` is still a placeholder (it doesn't actually analyze the photo yet - image-based recognition is the roadmap item below). Wikidata dimensions are stored as plain numbers without units, so converting them to mm uses a size heuristic rather than a guaranteed-correct unit; this is documented in `backend/app/services/dimensions/wikidata.py`. The frontend hasn't been changed as part of this - it talks to whichever backend Docker Compose points it at.
+Every generated bin now has the real Gridfinity interlocking base/foot profile on its underside - one stepped-chamfer foot (0.8mm chamfer + 1.8mm straight + 2.4mm chamfer, matching the profile used by established open source Gridfinity CAD libraries) per 42×42mm grid cell, rather than a flat floor. Earlier versions produced correctly-sized bins that would not actually register or press-fit into a real Gridfinity baseplate; this was caught by opening a real generated STL file, not by any automated test, which is why `backend/tests/test_stl_geometry.py` now also asserts on the foot shape directly (it widens from a narrow tip to the full cell width, and a multi-cell bin's underside is made of one separate foot per cell) rather than only on overall volume.
+
+Known caveats: `/identify-image` is still a placeholder (it doesn't actually analyze the photo yet - image-based recognition is the roadmap item below). Wikidata dimensions are stored as plain numbers without units, so converting them to mm uses a size heuristic rather than a guaranteed-correct unit; this is documented in `backend/app/services/dimensions/wikidata.py`. The frontend hasn't been changed as part of this - it talks to whichever backend Docker Compose points it at. Magnet/screw holes are still 4 total per bin (inset from each outer corner) rather than one set per grid cell, which is a simplification for multi-cell bins versus the full Gridfinity spec.
 
 - [x] MVP: Text-based item lookup and STL generation
 - [x] Real dimension lookup (Wikidata + manufacturer schema.org + Wikipedia)
 - [x] Proposal types produce distinct geometry (finger cutouts, compartment dividers)
+- [x] Real Gridfinity base/foot profile (bins actually press-fit into a baseplate)
 - [ ] Image-based item recognition with scale reference
 - [ ] User customization (wall thickness, lip, labels, etc.)
 - [ ] Design gallery and shareable links
