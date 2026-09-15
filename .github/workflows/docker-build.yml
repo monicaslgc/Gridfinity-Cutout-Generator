@@ -6,6 +6,14 @@ name: docker-build
 # with plain pip, frontend.yml runs npm directly. That gap is exactly how
 # docker-compose.yml's build context/volume mismatches went unnoticed (see
 # the "Fix docker-compose.yml" commit) - this job would have caught both.
+#
+# Beyond just building the images, this also actually brings the stack up
+# (`docker compose up -d`, matching the README's documented command) and
+# hits both services over HTTP - proof the containers not only build but
+# actually run and serve traffic, which a successful `docker compose build`
+# alone does not guarantee (e.g. a bad CMD, a missing runtime dependency, or
+# a port/env misconfiguration would all build fine and only fail at
+# runtime).
 on:
   push:
     branches: [main]
@@ -17,5 +25,45 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: docker compose build
         run: docker compose build
+
+      - name: docker compose up
+        run: docker compose up -d
+
+      - name: Wait for backend to become healthy
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/health; then
+              echo "backend is up"
+              exit 0
+            fi
+            echo "waiting for backend... ($i/30)"
+            sleep 2
+          done
+          echo "backend never became healthy"
+          docker compose logs backend
+          exit 1
+
+      - name: Wait for frontend to respond
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000 -o /dev/null; then
+              echo "frontend is up"
+              exit 0
+            fi
+            echo "waiting for frontend... ($i/30)"
+            sleep 2
+          done
+          echo "frontend never responded"
+          docker compose logs frontend
+          exit 1
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: docker compose down
+        if: always()
+        run: docker compose down -v
