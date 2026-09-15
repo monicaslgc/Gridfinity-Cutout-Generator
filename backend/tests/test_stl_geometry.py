@@ -88,8 +88,11 @@ def test_foot_profile_widens_from_bottom_tip_to_top():
     g = GFParams()
     foot = _make_gridfinity_foot(g)
     bb = foot.val().BoundingBox()
-    assert bb.zmin == 0
-    assert abs(bb.zmax - g.foot_h) < 1e-6
+    # Use a small tolerance, not exact equality: OCCT's tessellated
+    # bounding box comes back a hair off zero (e.g. -1e-07) even though
+    # the modeled profile starts exactly at z=0.
+    assert abs(bb.zmin - 0) < 1e-4
+    assert abs(bb.zmax - g.foot_h) < 1e-4
 
     bottom_area = foot.faces("<Z").val().Area()
     top_area = foot.faces(">Z").val().Area()
