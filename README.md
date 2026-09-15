@@ -195,22 +195,23 @@ Generates STL files corresponding to a selected container proposal.
 
 ## Project Structure
 ```
-/frontend → Next.js app (UI + STL preview)
-/backend → FastAPI app (LLM + CAD + API)
-/cad → CadQuery scripts for Gridfinity bins
-/docs → Documentation and diagrams
+/frontend/frontend → Next.js app (UI + STL preview) - nested; see frontend/README.md
+/backend → FastAPI apps (app/ is the real backend, main.py is a mock-catalog one) + CadQuery bin generation
 ```
 
 ---
 
 ## Development Roadmap
 
-Current status: there are two backends in `backend/`. `backend/main.py` is a small mock-catalog version (`/identify` and `/dimensions` do keyword matching against a local list, not a real LLM or web lookup) that the frontend and Docker Compose used while `backend/app/` was broken. `backend/app/` is the real backend: `/identify` resolves items to Wikidata QIDs, `/dimensions` pulls real measurements from Wikidata, manufacturer schema.org product markup, and Wikipedia text (merging whichever sources have data, in that priority order), and `/proposals` / `/stl` generate real Gridfinity slot math and real CadQuery STL files, including the stacking lip, magnet holes, and screw holes. `backend/app/` was unimportable for a while (a corrupted `dimensions/` subpackage plus a naming collision with a leftover flat file); that's been rewritten and is now covered by its own test suite, and Docker Compose and the Dockerfile both point at it again (`app.main:app`).
+Current status: there are two backends in `backend/`. `backend/main.py` is a small mock-catalog version (`/identify` and `/dimensions` do keyword matching against a local list, not a real LLM or web lookup) that the frontend and Docker Compose used while `backend/app/` was broken. `backend/app/` is the real backend: `/identify` resolves items to Wikidata QIDs, `/dimensions` pulls real measurements from Wikidata, manufacturer schema.org product markup, and Wikipedia text (merging whichever sources have data, in that priority order), and `/proposals` / `/stl` generate real Gridfinity slot math and real CadQuery STL files. `backend/app/` was unimportable for a while (a corrupted `dimensions/` subpackage plus a naming collision with a leftover flat file); that's been rewritten and is now covered by its own test suite, and Docker Compose and the Dockerfile both point at it again (`app.main:app`).
+
+Each proposal type now produces genuinely different geometry, not just a different size: Snug Fit is a plain hollow bin, Easy Grab additionally cuts a finger scoop into the front wall, and Multi-purpose additionally cuts interior divider walls splitting the cavity into the proposed number of compartments. All three still get the stacking lip and optional magnet/screw holes.
 
 Known caveats: `/identify-image` is still a placeholder (it doesn't actually analyze the photo yet - image-based recognition is the roadmap item below). Wikidata dimensions are stored as plain numbers without units, so converting them to mm uses a size heuristic rather than a guaranteed-correct unit; this is documented in `backend/app/services/dimensions/wikidata.py`. The frontend hasn't been changed as part of this - it talks to whichever backend Docker Compose points it at.
 
 - [x] MVP: Text-based item lookup and STL generation
 - [x] Real dimension lookup (Wikidata + manufacturer schema.org + Wikipedia)
+- [x] Proposal types produce distinct geometry (finger cutouts, compartment dividers)
 - [ ] Image-based item recognition with scale reference
 - [ ] User customization (wall thickness, lip, labels, etc.)
 - [ ] Design gallery and shareable links
