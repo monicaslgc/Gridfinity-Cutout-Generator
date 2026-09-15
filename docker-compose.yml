@@ -2,7 +2,15 @@ version: "3.9"
 
 services:
   backend:
-    build: ./backend
+    # Build context must be the repo root, not ./backend: backend/Dockerfile
+    # does `COPY backend/requirements.txt .` and `COPY backend/ .` (paths
+    # relative to repo root), so a context of ./backend would make it look
+    # for the nonexistent backend/backend/requirements.txt and fail the
+    # build outright. This never got caught because CI installs the backend
+    # with plain pip, never `docker compose build`.
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: gridfinity-backend
     # Runs app/main.py - the real Wikidata/schema.org/Wikipedia dimension
     # lookup backend. (It was broken/unimportable for a while and this used
@@ -19,8 +27,19 @@ services:
     build: ./frontend
     container_name: gridfinity-frontend
     command: npm run dev
+    # The Next.js app actually lives at frontend/frontend/ (nested - see
+    # frontend/frontend/package.json), not directly under frontend/. The
+    # Dockerfile's build already accounts for this (COPY frontend/... with
+    # a build context of ./frontend correctly reaches frontend/frontend/*),
+    # but this volume mount previously pointed at the outer ./frontend
+    # folder, which only contains the Dockerfile/README/.env.local plus the
+    # nested frontend/ subfolder - not package.json or the app source. That
+    # mismatch would make `npm run dev` fail at container startup (no
+    # package.json at /app), even though `docker compose build` itself
+    # would succeed. Mounting the nested folder instead matches what the
+    # image actually has at /app.
     volumes:
-      - ./frontend:/app
+      - ./frontend/frontend:/app
       - /app/node_modules
     ports:
       - "3000:3000"
