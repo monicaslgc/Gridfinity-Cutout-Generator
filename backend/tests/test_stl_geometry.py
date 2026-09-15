@@ -22,6 +22,14 @@ test_bin_foot_profile_* tests below cover that fix (_make_gridfinity_foot /
 _add_gridfinity_feet): the foot must actually widen from its bottom tip to
 where it meets the bin body, and a multi-cell bin's bottom must be made up
 of one separate foot per grid cell rather than a single flat face.
+
+Finally, _make_bin() also never implemented the project's namesake
+"cutout" feature at all - the interior cavity was always a plain
+rectangular box no matter what item it was sized for. The cutout-shape
+tests near the bottom of this file cover the fix (_make_cavity /
+shape.classify_shape): items whose name matches a cylinder or
+rounded-box keyword get a correspondingly shaped cavity, and anything
+unrecognized keeps the original plain box cavity unchanged.
 """
 from __future__ import annotations
 
@@ -118,4 +126,47 @@ def test_bin_with_magnets_and_screws_still_builds_with_feet():
     g = GFParams()
     proposal = _same_size_proposal("snug")
     body = _make_bin(proposal, None, {"lip": True, "magnets": True, "screws": True}, g)
+    assert body.val().Volume() > 0
+
+
+# --- Cutout shape (the project's namesake feature - see shape.py) ---
+#
+# A round or filleted cavity removes less material than a plain
+# rectangular cavity of the same bounding size (the corners stay solid),
+# so for the same outer dimensions, a cylinder- or rounded-box-shaped bin
+# should have MORE volume than the plain box-shaped baseline. That's a
+# simple, direct way to prove the cavity shape actually changed rather
+# than every item still getting an identical rectangular hole.
+
+def test_cylinder_shaped_item_gets_a_round_cavity():
+    g = GFParams()
+    proposal = _same_size_proposal("snug")
+    box_body = _make_bin(proposal, "Mystery Widget", {"lip": False}, g)
+    cyl_body = _make_bin(proposal, "Stainless Steel Water Bottle", {"lip": False}, g)
+    assert cyl_body.val().Volume() > box_body.val().Volume()
+
+
+def test_rounded_box_item_gets_filleted_cavity_corners():
+    g = GFParams()
+    proposal = _same_size_proposal("snug")
+    box_body = _make_bin(proposal, "Mystery Widget", {"lip": False}, g)
+    rounded_body = _make_bin(proposal, "Xbox Wireless Controller", {"lip": False}, g)
+    assert rounded_body.val().Volume() > box_body.val().Volume()
+
+
+def test_unrecognized_item_name_keeps_plain_box_cavity():
+    # No label at all, and a label with no matching keyword, should both
+    # produce the exact same (plain box) cavity - the heuristic must never
+    # change geometry when it isn't confident about the shape.
+    g = GFParams()
+    proposal = _same_size_proposal("snug")
+    no_label = _make_bin(proposal, None, {"lip": False}, g)
+    unknown_label = _make_bin(proposal, "Mystery Widget", {"lip": False}, g)
+    assert no_label.val().Volume() == unknown_label.val().Volume()
+
+
+def test_cylinder_cutout_smallest_possible_size_does_not_crash():
+    g = GFParams()
+    proposal = Proposal(type="snug", x_slots=1, y_slots=1, z_units=1, clearance=0.3)
+    body = _make_bin(proposal, "Water Bottle", {"lip": True, "magnets": True, "screws": True}, g)
     assert body.val().Volume() > 0
