@@ -9,6 +9,7 @@ except Exception:  # pragma: no cover
     cq = None
 
 from ..models import STLRequest, STLFile, Proposal
+from .shape import classify_shape
 
 
 @dataclass
@@ -162,6 +163,52 @@ def _add_compartment_dividers(body: "cq.Workplane", x: float, y: float, z: float
     return body
 
 
+def _make_cavity(x: float, y: float, z: float, g: GFParams, shape: str) -> "cq.Workplane":
+    """Build the interior cavity to cut out of the bin. Shaped to roughly
+    match the item going in it (see shape.classify_shape) rather than
+    always being a plain rectangular box - a cylindrical item gets a round
+    cavity, a rounded item gets filleted cavity corners, everything else
+    (including anything the heuristic isn't confident about) gets the
+    original plain rectangular cavity.
+
+    Same footprint math either way: floor sits g.wall above the top of the
+    foot region, cavity height overshoots past z by 1mm to cut fully
+    through the open top, matching the plain-box cavity this replaced.
+    """
+    floor_top = g.foot_h + g.wall
+    cavity_h = max(z - floor_top + 1, 0.5)
+    offset_z = z - cavity_h + 1
+    ix = x - 2 * g.wall
+    iy = y - 2 * g.wall
+
+    if shape == "cylinder" and ix > 4 and iy > 4:
+        try:
+            diameter = min(ix, iy)
+            return (
+                cq.Workplane("XY")
+                .workplane(offset=offset_z)
+                .circle(diameter / 2)
+                .extrude(cavity_h)
+            )
+        except Exception:
+            pass  # fall through to the plain box below
+
+    box_cavity = (
+        cq.Workplane("XY")
+        .workplane(offset=offset_z)
+        .box(ix, iy, cavity_h, centered=(True, True, False))
+    )
+
+    if shape == "rounded_box" and ix > 8 and iy > 8:
+        try:
+            radius = min(min(ix, iy) * 0.15, 8.0)
+            return box_cavity.edges("|Z").fillet(radius)
+        except Exception:
+            pass  # fall through to the plain box
+
+    return box_cavity
+
+
 def _drill_corner_holes(body: "cq.Workplane", x: float, y: float, g: GFParams, diameter: float, depth: float) -> "cq.Workplane":
     """Cut 4 corner holes (magnets or screws) via explicit cylinder-cut
     solids rather than a face-selector + .hole() - the bin's bottom is no
@@ -201,6 +248,12 @@ def _make_bin(p: Proposal, label: "str | None", options: dict, g: GFParams) -> "
     optional magnet/screw holes at the base corners. "easy" bins
     additionally get a finger scoop and "multi" bins get interior
     compartment dividers - see _add_finger_cutout / _add_compartment_dividers.
+
+    The interior cavity is shaped to roughly match the item (see
+    _make_cavity / shape.classify_shape, guessed from `label`) rather than
+    always being a plain rectangular box - the project's namesake "cutout"
+    feature, previously unimplemented (every bin was a flat rectangular
+    box no matter what was going in it).
 
     The bin's outer shape is built in two pieces and unioned: the foot
     region (z: 0..g.foot_h, one stepped-chamfer foot per grid cell) and a
@@ -244,14 +297,11 @@ def _make_bin(p: Proposal, label: "str | None", options: dict, g: GFParams) -> "
 
     # Hollow the bin above the foot region: wall thickness on the sides,
     # and a floor exactly g.wall thick sitting right on top of the feet.
-    # The foot region itself (z: 0..g.foot_h) stays solid.
-    floor_top = g.foot_h + g.wall
-    cavity_h = max(z - floor_top + 1, 0.5)
-    cavity = (
-        cq.Workplane("XY")
-        .workplane(offset=z - cavity_h + 1)
-        .box(x - 2 * g.wall, y - 2 * g.wall, cavity_h, centered=(True, True, False))
-    )
+    # The foot region itself (z: 0..g.foot_h) stays solid. The cavity's
+    # shape is guessed from the item's name (see _make_cavity) instead of
+    # always being a plain rectangular box.
+    shape = classify_shape(label)
+    cavity = _make_cavity(x, y, z, g, shape)
     try:
         body = body.cut(cavity)
     except Exception:
