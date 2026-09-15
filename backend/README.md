@@ -1,16 +1,24 @@
 # Backend – Gridfinity Cutout Generator
 
-This is the backend service for the Gridfinity Cutout Generator project.  
-It provides the API for identifying items, fetching dimensions, generating container proposals, and producing STL/STEP files – all with Gridfinity-compatible parametric models.
+This is the backend service for the Gridfinity Cutout Generator project. It
+provides the API for identifying items, fetching dimensions, generating
+container proposals, and producing STL files – all with Gridfinity-compatible
+parametric models built with CadQuery.
 
----
+There are two backend entrypoints in this folder:
 
-## Features
+- **`app/main.py`** – the real backend. `/identify` resolves an item to a
+  Wikidata QID, `/dimensions` pulls real measurements from Wikidata,
+  manufacturer schema.org product markup, and Wikipedia (merging whichever
+  sources have data). This is what Docker Compose and the Dockerfile run.
+- **`main.py`** – a small mock-catalog backend. `/identify` and `/dimensions`
+  do keyword matching against a short local list instead of a real lookup.
+  Useful for local frontend development without hitting external APIs.
 
-- REST API for generating custom Gridfinity containers
-- Parametric CAD generation with CadQuery
-- Temporary download links for STL/STEP files (auto-expire)
-- Ready for integration with the Next.js frontend
+Both share the same `/proposals` and `/stl` behavior: real Gridfinity slot
+math and real CadQuery-generated STL files, including the stacking lip,
+magnet/screw holes, an "Easy Grab" finger scoop, and "Multi-purpose"
+compartment dividers.
 
 ---
 
@@ -18,19 +26,11 @@ It provides the API for identifying items, fetching dimensions, generating conta
 
 ### Prerequisites
 
-- Python 3.10+ (recommended: use [`conda`](https://docs.conda.io/projects/conda/en/latest/user-guide/install/))
+- Python 3.10+
 - (Optional) Docker & Docker Compose
 
 ### Installation
 
-**With Conda:**
-```bash
-cd backend
-conda env create -f environment.yml
-conda activate gridfinity
-```
-
-**Or with pip:**
 ```bash
 cd backend
 pip install -r requirements.txt
@@ -39,6 +39,10 @@ pip install -r requirements.txt
 ### Running the Server
 
 ```bash
+# Real backend (Wikidata/schema.org/Wikipedia lookup)
+uvicorn app.main:app --reload
+
+# or, the mock-catalog backend
 uvicorn main:app --reload
 ```
 
@@ -49,51 +53,28 @@ uvicorn main:app --reload
 
 ## API Endpoints
 
-### `GET /generate`
+- `GET /health`
+- `POST /identify` – identify an item from text (or `POST /identify-image` from a photo; still a placeholder in `app.main`)
+- `GET /dimensions` – fetch `L`/`W`/`H` in mm for an item
+- `POST /proposals` – generate Snug/Easy Grab/Multi-purpose bin proposals for a set of dimensions
+- `POST /stl` – generate an STL file for a chosen proposal
 
-Generate a parametric container and receive a temporary download link.
-
-**Query Parameters:**
-- `width` (mm)
-- `length` (mm)
-- `height` (mm)
-- `filetype` (`stl` or `step`)
-
-**Example:**
-```
-/generate?width=42&length=42&height=20&filetype=stl
-```
-
-**Response:**
-```json
-{
-  "download_url": "/download/1234abcd?filetype=stl"
-}
-```
-
-### `GET /download/{token}`
-
-Download the generated file by token (valid for 5 minutes after creation).
+See the top-level [README](../README.md) for full request/response examples.
 
 ---
 
-## Development Notes
+## Tests
 
-- Temporary files are stored in `backend/temp_files/`. They are auto-deleted after 5 minutes.
-- Replace the sample box-generation in `main.py` with the full Gridfinity container logic as you upgrade the project.
-- Add your LLM/image/dimension lookup integration as needed.
-
----
-
-## Project Structure
-
+```bash
+cd backend
+pip install -r requirements.txt pytest httpx
+pytest -v
 ```
-backend/
-  main.py                 # FastAPI app entrypoint
-  requirements.txt
-  environment.yml
-  temp_files/             # (auto-created, ignored by git)
-```
+
+`tests/test_api.py` covers the mock backend, `tests/test_app_main.py` and
+`tests/test_dimensions_package.py` cover the real backend end to end
+(network calls mocked), and `tests/test_stl_geometry.py` covers the STL
+geometry differences between proposal types.
 
 ---
 
