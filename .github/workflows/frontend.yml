@@ -20,7 +20,9 @@ jobs:
       - name: Check if frontend exists
         id: check
         run: |
-          if [ -f frontend/package.json ]; then
+          # The Next.js app lives at frontend/frontend (nested), not
+          # frontend/ directly - see frontend/frontend/package.json.
+          if [ -f frontend/frontend/package.json ]; then
             echo "present=true" >> $GITHUB_OUTPUT
           else
             echo "present=false" >> $GITHUB_OUTPUT
@@ -33,7 +35,7 @@ jobs:
 
       - name: Install deps
         if: steps.check.outputs.present == 'true'
-        working-directory: frontend
+        working-directory: frontend/frontend
         run: |
           if [ -f package-lock.json ]; then
             npm ci --no-audit --no-fund
@@ -43,5 +45,5 @@ jobs:
 
       - name: Build
         if: steps.check.outputs.present == 'true'
-        working-directory: frontend
+        working-directory: frontend/frontend
         run: npm run build
